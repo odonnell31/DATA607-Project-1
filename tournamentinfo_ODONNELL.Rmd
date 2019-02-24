@@ -1,0 +1,196 @@
+---
+title: "DATA607 Project 1"
+author: "ODONNELL"
+date: "February 19, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+First, lets read in the text file as a large string
+(for stringr, this worked better than reading it in as a dataframe)
+```{r}
+txtfile = readChar("tournamentinfo.txt", file.info("tournamentinfo.txt")$size)
+```
+
+Now, let's trim the first 360 characters from that text file
+(The first 360 characters are the row headers and such)
+```{r}
+#using nchar to figure out total characters..
+nchar(txtfile)
+txtfile <- substr(txtfile, 360, 17836)
+```
+
+
+Next, lets extract each needed variable with stringr:
+player_name
+state
+player_ID
+total_points
+pre_rating
+```{r}
+library(stringr)
+
+#lets first extract all the players' names
+player_name <- unlist(str_extract_all(txtfile, "[|][:space:][[:upper:]]{2,}[[:space:], [:upper:]]{2,}[[:upper:]$]"))
+player_name <- unlist(str_sub(player_name, start = 3))
+player_name
+```
+
+```{r}
+#extract all state names
+state <- unlist(str_extract_all(txtfile, "[[:upper:]]{2}[[:space:]]{1}[|]"))
+state <- unlist(str_extract_all(state, "[[:upper:]]{2}"))
+state
+```
+
+```{r}
+#extract all players' ID numbers
+player_ID <- unlist(str_extract_all(txtfile, "[[:digit:]]{1,2}[[:space:]]{1}[|]"))
+player_ID <- unlist(str_extract_all(player_ID, "[[:digit:]]{1,2}"))
+player_ID
+```
+
+```{r}
+#extract total points
+total_points <- unlist(str_extract_all(txtfile, "[|][0-6]{1}\\.{1}[[:digit:]]{1}"))
+total_points <- unlist(str_extract_all(total_points, "[0-6]{1}\\.{1}[[:digit:]]{1}"))
+total_points
+```
+
+```{r}
+#extract pre-ratings
+pre_rating <- unlist(str_extract_all(txtfile, "[[:digit:]P]{3,}[[:space:]]{0,4}[-]"))
+pre_rating <- unlist(str_extract_all(pre_rating, "[[:digit:]]{3,4}"))
+pre_rating
+```
+
+Now, lets enter all of the extracted fields into a dataframe!
+```{r}
+tourny_df = data.frame(player_ID, player_name, state, total_points, pre_rating)
+head(tourny_df)
+```
+
+Unfortunately, all the columns in the df are type level
+So, lets change the data type of some of the dataframe columns
+```{r}
+tourny_df <- transform(tourny_df, player_ID = as.numeric(as.character(player_ID)),
+          pre_rating = as.numeric(as.character(pre_rating)),
+          total_points = as.numeric(as.character(total_points)),
+          player_name = as.character(player_name),
+          state = as.character(state))
+str(tourny_df)
+```
+
+Lastly, lets add in the Average Pre Rating of Opponents
+The hardest step!
+We will create a few new dataframes in the process..
+```{r}
+opponents <- unlist(str_extract_all(txtfile, "[|][0-6]{1}\\.{1}[[:digit:]]{1}[[:space:]]{1,}([|][[:upper:]]{1}[[:space:]]{1,}[[:digit:]]{0,2}){7}"))
+opponents <- unlist(str_extract_all(opponents, "([|][[:upper:]]{1}[[:space:]]{1,}[[:digit:]]{0,2}){7}"))
+opponents_df <- data.frame(unlist(str_split_fixed(opponents, "[|]", n=8)))
+```
+
+So, in the chunk above we created a dataframe with all opponents scores
+But, we need to clean it up.
+```{r}
+#delete first column
+opponents_df <- opponents_df[ , !names(opponents_df) %in% "X1"]
+```
+
+Check the data types in the opponents_df
+```{r}
+str(opponents_df)
+```
+
+Cool, now remove first two chars from each cell
+```{r}
+opponents_df$X2 <- substring(opponents_df$X2, 2)
+opponents_df$X3 <- substring(opponents_df$X3, 2)
+opponents_df$X4 <- substring(opponents_df$X4, 2)
+opponents_df$X5 <- substring(opponents_df$X5, 2)
+opponents_df$X6 <- substring(opponents_df$X6, 2)
+opponents_df$X7 <- substring(opponents_df$X7, 2)
+opponents_df$X8 <- substring(opponents_df$X8, 2)
+```
+
+
+Now, change the data type of all the dataframe columns
+```{r}
+opponents_df <- transform(opponents_df, X2 = as.numeric(as.character(X2)),
+          X3 = as.numeric(as.character(X3)),
+          X4 = as.numeric(as.character(X4)),
+          X5 = as.numeric(as.character(X5)),
+          X6 = as.numeric(as.character(X6)),
+          X7 = as.numeric(as.character(X7)),
+          X8 = as.numeric(as.character(X8)))
+str(opponents_df)
+```
+
+Now, lets add a column that matches Player_ID to opponents_df
+Reason being, then we can merge the two dataframes based on Player_ID
+```{r}
+opponents_df$player_ID = c(1:64)
+```
+
+OK, lets merge our two dataframes into a new, temporary dataframe
+```{r}
+merged_df <- merge(tourny_df, opponents_df, by = "player_ID", all = TRUE)
+```
+
+Now, lets use merge to do some vlookups
+```{r}
+merged_df$opp1 <- merge(merged_df[, c("X2", "pre_rating")], tourny_df, by.x = "X2", by.y = "player_ID", all.x = TRUE)
+```
+
+```{r}
+merged_df$opp2 <- merge(merged_df[, c("X3", "pre_rating")], tourny_df, by.x = "X3", by.y = "player_ID", all.x = TRUE)
+```
+
+```{r}
+merged_df$opp3 <- merge(merged_df[, c("X4", "pre_rating")], tourny_df, by.x = "X4", by.y = "player_ID", all.x = TRUE)
+```
+
+```{r}
+merged_df$opp4 <- merge(merged_df[, c("X5", "pre_rating")], tourny_df, by.x = "X5", by.y = "player_ID", all.x = TRUE)
+```
+
+```{r}
+merged_df$opp5 <- merge(merged_df[, c("X6", "pre_rating")], tourny_df, by.x = "X6", by.y = "player_ID", all.x = TRUE)
+```
+
+```{r}
+merged_df$opp6 <- merge(merged_df[, c("X7", "pre_rating")], tourny_df, by.x = "X7", by.y = "player_ID", all.x = TRUE)
+```
+
+```{r}
+merged_df$opp7 <- merge(merged_df[, c("X8", "pre_rating")], tourny_df, by.x = "X8", by.y = "player_ID", all.x = TRUE)
+```
+
+Create one last dataframe to calc average opponents pre rating
+```{r}
+opp_average <- data.frame(merged_df$opp1$pre_rating.x, merged_df$opp2$pre_rating.x,
+                          merged_df$opp3$pre_rating.x, merged_df$opp4$pre_rating.x,
+                          merged_df$opp5$pre_rating.x, merged_df$opp6$pre_rating.x,
+                          merged_df$opp7$pre_rating.x)
+
+opp_average$avg_opp_pre_rating <- rowMeans(opp_average)
+
+opp_average$player_ID = c(1:64)
+
+opp_average <- opp_average[, c("player_ID", "avg_opp_pre_rating")]
+```
+
+Lastly, add average opponents pre rating to our master dataframe:
+tourny_df
+```{r}
+tourny_df <- merge(tourny_df, opp_average, by = "player_ID", all = TRUE)
+head(tourny_df)
+```
+
+Finally, export our work as a CSV!
+```{r}
+write.csv(tourny_df, "tournament_info.csv")
+```
